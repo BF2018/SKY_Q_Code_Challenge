@@ -1,49 +1,76 @@
 package com.example.sky_q_code_challenge.viewModel
 
-import android.widget.Toast
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
-import com.example.sky_q_code_challenge.data.Movies
-import com.example.sky_q_code_challenge.extensions.getAppContext
-import com.example.sky_q_code_challenge.extensions.runApiCall
+import com.example.sky_q_code_challenge.data.Movie
+import com.example.sky_q_code_challenge.data.MovieResponse
+import com.example.sky_q_code_challenge.enums.ProcessStep
 import com.example.sky_q_code_challenge.misc.Preferences
 import com.example.sky_q_code_challenge.network.ApiClient
+import io.reactivex.disposables.CompositeDisposable
 
 
-class MoviesViewModel : ViewModel() {
+class MoviesViewModel(private val apiClient: ApiClient, private val pref: Preferences) :
+    ViewModel() {
 
-    var movies = MutableLiveData<Movies>()
-    var pref =  Preferences(getAppContext())
+    private val disposable = CompositeDisposable()
+    private val fullMovieList = mutableListOf<Movie>()
+    var moviesLiveData = MutableLiveData<List<Movie>>()
+    var errorLiveData = MutableLiveData<String>()
+    var stepLiveData = MutableLiveData<ProcessStep>()
 
-   private fun getDataFromNetwork() {
-       ApiClient.callApi().runApiCall({ listOfMovies ->
-        movies.value = listOfMovies
-           setApiDataToSharedPref(listOfMovies)
-       },{error->
-           error.printStackTrace()
-           Toast.makeText(getAppContext(),error.localizedMessage,Toast.LENGTH_LONG).show()
-       })
+    private fun getDataFromNetwork() {
+        disposable.add(
+            apiClient.callApi().subscribe({ movieResponse ->
+                moviesLiveData.value = movieResponse.data
+                fullMovieList.clear()
+                fullMovieList.addAll(movieResponse.data)
+                setApiDataToSharedPref(movieResponse)
+                stepLiveData.value = ProcessStep.SUCCESS
+            }, { error ->
+                error.printStackTrace()
+                errorLiveData.value = error.localizedMessage
+                stepLiveData.value = ProcessStep.FAILURE
+            })
+        )
     }
 
-    fun getObservable() = movies
-
-    private fun setApiDataToSharedPref(movies: Movies){
-        pref.setMoviesData("savedMovieList",movies)
+    private fun setApiDataToSharedPref(movieResponse: MovieResponse) {
+        pref.setMoviesData(movieResponse)
         pref.setTimerForCache()
     }
 
-    fun getMoviesData(){
-        if (pref.preferences.getLong("ExpiredDate", -1) >
-            System.currentTimeMillis()){
+    fun getMoviesData() {
+        stepLiveData.value = ProcessStep.PROCESSING
+        if (pref.getExpiredTime() > System.currentTimeMillis()) {
             getDataFormSharedPref()
-        }else
-            pref.preferences.apply {
-                edit().clear().apply()
-            }
+        } else {
+            pref.clearPref()
             getDataFromNetwork()
+        }
+
     }
 
-    private fun getDataFormSharedPref(){
-       movies.value = pref.getSavedMoviesData("savedMovieList")
+    private fun getDataFormSharedPref() {
+        pref.getSavedMoviesData()?.apply {
+            moviesLiveData.value = this.data
+            fullMovieList.clear()
+            fullMovieList.addAll(this.data)
+            stepLiveData.value = ProcessStep.SUCCESS
+        }
+    }
+
+    fun filterMovies(keyword: String) {
+        moviesLiveData.value =
+            fullMovieList.filter {
+                it.title.toLowerCase().contains(keyword.toLowerCase()) || it.genre.toLowerCase().contains(
+                    keyword.toLowerCase()
+                )
+            }
+    }
+
+    override fun onCleared() {
+        disposable.clear()
+        super.onCleared()
     }
 }

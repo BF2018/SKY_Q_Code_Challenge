@@ -3,4 +3,5 @@
     <string name="title">TITLE :</string>
     <string name="genre">GENRE :</string>
     <string name="year">YEAR :</string>
+    <string name="retry">Retry</string>
 </resources>

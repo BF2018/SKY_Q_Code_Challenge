@@ -1,68 +1,81 @@
 package com.example.sky_q_code_challenge.ui
 
 import android.os.Bundle
-import android.view.Menu
-import android.view.MenuItem
+import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.SearchView
-import androidx.appcompat.widget.SearchView.OnQueryTextListener
-import androidx.core.view.MenuItemCompat
 import androidx.lifecycle.Observer
+import androidx.lifecycle.ViewModelProviders
 import androidx.recyclerview.widget.RecyclerView
 import com.example.sky_q_code_challenge.R
-import com.example.sky_q_code_challenge.data.Movies
+import com.example.sky_q_code_challenge.enums.ProcessStep
+import com.example.sky_q_code_challenge.misc.Preferences
+import com.example.sky_q_code_challenge.network.ApiClient
 import com.example.sky_q_code_challenge.ui.adapter.MoviesAdapter
 import com.example.sky_q_code_challenge.viewModel.MoviesViewModel
+import com.example.sky_q_code_challenge.viewModel.MoviesViewModelFactory
+import kotlinx.android.synthetic.main.activity_main.*
 
 
 class MoviesActivity : AppCompatActivity() {
 
-    lateinit var recyclerView : RecyclerView
-    lateinit var adapter : MoviesAdapter
-    private var viewModel = MoviesViewModel()
+    private lateinit var recyclerView: RecyclerView
+    private lateinit var viewModel: MoviesViewModel
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
-        viewModel.getMoviesData()
-        viewModel.getObservable().observe(this,
-             Observer<Movies> {movies ->
-                 fillRecyclerView(movies)})
-    }
-
-    private fun fillRecyclerView(movies: Movies){
         recyclerView = findViewById(R.id.recyclerView)
-        recyclerView.adapter  = MoviesAdapter(movies)
-        val layoutManager = AutoFitGridLayoutManager(this, 500)
-        recyclerView.layoutManager = layoutManager
-    }
+        recyclerView.layoutManager = AutoFitGridLayoutManager(this, 500)
+        val apiClient = ApiClient()
+        val viewModelFactory = MoviesViewModelFactory(apiClient, Preferences(applicationContext))
 
-    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
-        menuInflater.inflate(R.menu.menu_main,menu)
-        val search = menu!!.findItem(R.id.search)
-        val searchView = MenuItemCompat.getActionView(search) as SearchView
-        search(searchView)
-        return true
-    }
+        viewModel = ViewModelProviders.of(this, viewModelFactory).get(MoviesViewModel::class.java)
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return super.onOptionsItemSelected(item)
-    }
+        viewModel.moviesLiveData.observe(this,
+            Observer { movies ->
+                recyclerView.adapter = MoviesAdapter(movies)
+            })
 
-    private fun search(searchView: SearchView) {
-        searchView.setOnQueryTextListener(object : OnQueryTextListener {
-           override fun onQueryTextSubmit(query: String?): Boolean {
-                return false
-            }
-
-           override fun onQueryTextChange(newText: String?): Boolean {
-                if (adapter != null) adapter.getFilter()?.filter(newText)
-                return true
+        viewModel.stepLiveData.observe(this, Observer {
+            resetContent()
+            when (it) {
+                ProcessStep.PROCESSING -> {
+                    progress_circular.visibility = View.VISIBLE
+                }
+                ProcessStep.FAILURE -> {
+                    tv_message.visibility = View.VISIBLE
+                    btnRetry.visibility = View.VISIBLE
+                }
+                ProcessStep.SUCCESS -> {
+                    recyclerView.visibility = View.VISIBLE
+                }
+                else -> {
+                    Toast.makeText(this, "Invalid Usecase", Toast.LENGTH_LONG).show()
+                }
             }
         })
+
+        viewModel.errorLiveData.observe(this, Observer {
+            tv_message.text = it
+        })
+        viewModel.getMoviesData()
+
+        btnSearch.setOnClickListener {
+            viewModel.filterMovies(etQuery.text.toString())
+        }
+        btnRetry.setOnClickListener {
+            viewModel.getMoviesData()
+        }
+
     }
 
+    private fun resetContent() {
+        progress_circular.visibility = View.GONE
+        tv_message.visibility = View.GONE
+        recyclerView.visibility = View.GONE
+        btnRetry.visibility = View.GONE
+    }
 
 
 }

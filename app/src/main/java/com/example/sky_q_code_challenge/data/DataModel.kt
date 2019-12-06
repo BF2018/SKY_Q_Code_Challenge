@@ -2,11 +2,11 @@ package com.example.sky_q_code_challenge.data
 
 import com.squareup.moshi.Json
 
-data class Movies(
-    @Json(name = "data") val data : List<Data>
+data class MovieResponse(
+    @Json(name = "data") val data : List<Movie>
 )
 
-data class Data (
+data class Movie (
 
     @Json(name = "id") val id : Int,
     @Json(name ="title") val title : String,
